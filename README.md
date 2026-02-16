@@ -2,7 +2,7 @@
 
 # 📑 新代Chrome更新器 图形化易用版
 ***Chrome_LinkerUP_v2***
-[项目主页](https://www.yan-me.top/20260112/)
+[项目主页](https://www.yan-me.top/20260212/)
 </div>
 
 <p align="center">
