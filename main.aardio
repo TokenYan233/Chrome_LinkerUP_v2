@@ -1,0 +1,827 @@
+//RUNAS//
+import win.ui;
+import win.version;
+import fsys;
+import fsys.ini;
+import fsys.dlg.dir;
+
+var iniPath = io.fullpath("/CLU_Config.ini");
+
+// 1.使用块注释直接定义多行字符串
+var rawTemplate = /***
+;开头实在不知道写啥了那我放个工具的发布地址吧(https://www.yan-me.top/20260212/)如果有更新的话
+[Network]
+;代理地址,需包含协议头(例如http://127.0.0.1:10808)
+proxy=
+;是否测速(1开启,0关闭)
+ping_switch=1
+;测速超时(毫秒)
+ping_timeout=1500
+
+[Cxml]
+;指定架构:x64,x86,arm64
+arch=x64
+;版本通道:stable,beta,dev,canary
+channel=stable
+;构造查询请求的自身版本(通常不用改)
+upr_v=1.3.36.151
+;构造查询请求的系统版本(可以在uupdump.cn查询)
+win_v=10.0.22635.5305
+;构造查询请求发去的字符语言代码(实在想改搜:HTML语言代码参考手册)
+loc_v=de
+;构造查询请求的UserAgent(正常也不用去动)
+uUA=Google Update/1.3.36.152;winhttp
+
+[Task]
+;是否开启下载模式(0仅查询,1查询并下载,2下载解压释放Chrome++)
+runMode=0
+;下载文件位置(默认是相对位置写法俩前后的斜杠别丢了)
+dir=/Download_installer/
+;解压文件位置(默认相对位置)
+extdir=/App_Chrome/
+;解压临时目录(默认相对位置)
+tempdir=/extract_temp/
+;Chrome++项目地址(构造的查询Github下载地址从这来)
+gcp=https://github.com/Bush2021/chrome_plus
+
+[Settings]
+;是否显示工作界面(1显示,0静默执行)
+ShowForm=1
+***/
+
+// 1.1如果文件不存在则保存模板
+if(!io.exist(iniPath)) { 
+    string.save(iniPath, rawTemplate); 
+}
+
+// 2.基础日志函数
+var log = function(mainForm, msg, msgType = "info"){
+    // 确保控件存在
+    if(!mainForm.editLog || !mainForm.editLog.hwnd) return;
+
+    // 如果 msg 是 null 则不处理
+    if(msg === null) return;
+
+    // 获取当前时间
+    var t = time.now();
+    t.format = "%H:%M:%S"; 
+    var strTime = tostring(t);
+
+    var prefix = "";
+    if(msgType == "err") prefix = "[错误] ";
+    if(msgType == "ok") prefix = "[成功] ";
+
+    mainForm.editLog.print("[" ++ strTime ++ "] " ++ prefix ++ tostring(msg));
+}
+/*DSG{{*/
+var mainForm = win.form(text="ChromeLinkerUPv2 - 新代Chrome更新器 图形化易用版";right=705;bottom=540;bgcolor=0xFFFFFF;max=false)
+mainForm.add(
+btnClearLog={cls="button";text="清除日志";left=585;top=85;right=680;bottom=110;font=LOGFONT(name='微软雅黑');z=27};
+btnReload={cls="button";text="重置配置";left=585;top=60;right=680;bottom=85;font=LOGFONT(name='微软雅黑');z=18};
+btnRun={cls="button";text="开始执行";left=585;top=160;right=680;bottom=220;bgcolor=0xFFFFFF;font=LOGFONT(h=-14;name='微软雅黑');z=1};
+btnSelDir={cls="button";text="选";left=540;top=140;right=570;bottom=165;z=22};
+btnSelExt={cls="button";text="选";left=540;top=190;right=570;bottom=215;z=23};
+chkShowForm={cls="checkbox";text="显示UI界面";left=585;top=130;right=680;bottom=150;bgcolor=0xFFFFFF;font=LOGFONT(h=-14;name='微软雅黑');z=26};
+editDir={cls="edit";left=310;top=140;right=530;bottom=165;edge=1;z=20};
+editExtDir={cls="edit";left=310;top=190;right=530;bottom=215;edge=1;z=21};
+editLog={cls="edit";left=25;top=230;right=695;bottom=530;edge=1;hscroll=1;multiline=1;vscroll=1;z=2};
+groupArch={cls="groupbox";text="选择架构";left=25;top=50;right=250;bottom=110;clip=1;clipch=1;edge=1;font=LOGFONT(h=-14;name='微软雅黑');transparent=1;z=3};
+groupChan={cls="groupbox";text="选择通道";left=265;top=50;right=570;bottom=110;clip=1;clipch=1;edge=1;font=LOGFONT(h=-14;name='微软雅黑');transparent=1;z=8};
+groupMode={cls="groupbox";text="运行模式选择";left=25;top=120;right=300;bottom=220;clip=1;clipch=1;edge=1;transparent=1;z=13};
+lnkWebsite={cls="syslink";text="项目主页";left=650;top=520;right=700;bottom=535;align="center";center=1;font=LOGFONT(name='微软雅黑');transparent=1;z=7};
+radioArm64={cls="radiobutton";text="arm64";left=165;top=75;right=225;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=6};
+radioBeta={cls="radiobutton";text="beta";left=370;top=75;right=425;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=11};
+radioCanary={cls="radiobutton";text="canary";left=480;top=75;right=540;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=14};
+radioDev={cls="radiobutton";text="dev";left=430;top=75;right=475;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=12};
+radioMode0={cls="radiobutton";text="模式0: 查询链接";left=55;top=150;right=165;bottom=170;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=15};
+radioMode1={cls="radiobutton";text="模式1: 查询下载";left=170;top=150;right=280;bottom=170;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=17};
+radioMode2={cls="radiobutton";text="模式2: 下载解压释放Chrome++插件";left=55;top=180;right=290;bottom=200;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=19};
+radioStable={cls="radiobutton";text="stable";left=300;top=75;right=355;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=9};
+radioX64={cls="radiobutton";text="x64";left=55;top=75;right=100;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=4};
+radioX86={cls="radiobutton";text="x86";left=110;top=75;right=155;bottom=95;bgcolor=0xFFFFFF;font=LOGFONT(name='微软雅黑');z=5};
+static={cls="static";text="下载路径:";left=310;top=120;right=368;bottom=138;center=1;font=LOGFONT(name='微软雅黑');transparent=1;z=24};
+static1={cls="static";text="ChromeLinkerUPv2 - 新代Chrome更新器 图形化易用版";left=20;top=13;right=400;bottom=33;center=1;font=LOGFONT(h=-14;name='微软雅黑';weight=700);transparent=1;z=16};
+static2={cls="static";text="解压路径:";left=310;top=170;right=368;bottom=188;center=1;font=LOGFONT(name='微软雅黑');transparent=1;z=25};
+statusInfo={cls="static";text="准备刷新信息";left=5;top=520;right=360;bottom=535;center=1;color=0x808080;font=LOGFONT(name='微软雅黑');transparent=1;z=10}
+)
+/*}}*/
+
+import win.ui.simpleWindow;
+win.ui.simpleWindow(mainForm);
+import win.region.round;
+win.region.round(mainForm);
+
+mainForm.setInterval(function(){
+mainForm.statusInfo.text = string.format("%s | %s", time().format("%Y-%m-%d %H:%M:%S"), win.version.format());
+}, 1000);
+
+mainForm.lnkWebsite.link = "https://www.yan-me.top/20260212/";
+
+// 3.界面同步逻辑
+var syncConfigToUI = function(){
+var ini = fsys.ini(iniPath);
+var arch = string.lower(ini.read("Cxml", "arch", "x64"));
+mainForm.radioX64.checked = (arch == "x64");
+mainForm.radioX86.checked = (arch == "x86");
+mainForm.radioArm64.checked = (arch == "arm64");
+
+var chan = string.lower(ini.read("Cxml", "channel", "stable"));
+mainForm.radioStable.checked = (chan == "stable");
+mainForm.radioBeta.checked = (chan == "beta");
+mainForm.radioDev.checked = (chan == "dev");
+mainForm.radioCanary.checked = (chan == "canary");
+
+var mode = ini.read("Task", "runMode", "0");
+mainForm.radioMode0.checked = (mode == "0");
+mainForm.radioMode1.checked = (mode == "1");
+mainForm.radioMode2.checked = (mode == "2");
+
+mainForm.editDir.text = ini.read("Task", "dir", "/Download_installer/");
+mainForm.editExtDir.text = ini.read("Task", "extdir", "/App_Chrome/");
+mainForm.chkShowForm.checked = (ini.read("Settings", "ShowForm", "1") == "1");
+}
+
+syncConfigToUI();
+
+// 4.交互与绑定
+mainForm.btnClearLog.oncommand = function(id,event){
+mainForm.editLog.text = "";
+}
+
+mainForm.chkShowForm.oncommand = function(id,event){
+fsys.ini(iniPath).write("Settings", "ShowForm", mainForm.chkShowForm.checked ? "1" : "0");
+}
+
+mainForm.btnReload.oncommand = function(id,event){
+if( mainForm.msgboxTest("确定要重置配置文件吗？") ){
+string.save(iniPath, rawTemplate);
+syncConfigToUI();
+log(mainForm, "配置已重置", "ok");
+}
+}
+
+mainForm.btnSelDir.oncommand = function(id,event){
+var path = fsys.dlg.dir(,mainForm,"选择下载目录");
+if(path){ mainForm.editDir.text = path; fsys.ini(iniPath).write("Task","dir",path); }
+}
+
+mainForm.btnSelExt.oncommand = function(id,event){
+var path = fsys.dlg.dir(,mainForm,"选择解压目录");
+if(path){ mainForm.editExtDir.text = path; fsys.ini(iniPath).write("Task","extdir",path); }
+}
+
+var bindRadios = function(){
+// 4.1逻辑分组强制将首个按钮设为组起始点这样架构通道模式就会被视为三个独立的互斥组
+mainForm.radioX64.modifyStyle(, 0x20000/*_WS_GROUP*/);
+mainForm.radioStable.modifyStyle(, 0x20000/*_WS_GROUP*/);
+mainForm.radioMode0.modifyStyle(, 0x20000/*_WS_GROUP*/);
+
+var ctrls = {
+"radioX64":"x64"; "radioX86":"x86"; "radioArm64":"arm64";
+"radioStable":"stable"; "radioBeta":"beta"; "radioDev":"dev"; "radioCanary":"canary";
+"radioMode0":"0"; "radioMode1":"1"; "radioMode2":"2"
+};
+
+for(name, val in ctrls){
+mainForm[name].oncommand = function(id,event){ 
+var ini = fsys.ini(iniPath);
+if(string.startWith(name, "radioMode")) {
+ini.write("Task", "runMode", val);
+log(mainForm, "模式切换: " + val);
+} else if(string.startWith(name, "radioX") || name=="radioArm64") {
+ini.write("Cxml", "arch", val);
+log(mainForm, "架构切换: " + val);
+} else {
+ini.write("Cxml", "channel", val);
+log(mainForm, "通道切换: " + val);
+}
+
+// 4.2每次点击后，强制从配置文件同步一次 UI 状态 确保即便 Windows 尝试取消其他组的选中，我们也能立刻刷回来
+syncConfigToUI(); 
+}
+}
+}
+bindRadios();
+
+// 5.此处是分线程，核心工作线程执行逻辑
+mainForm.runLogic = function(isSilent = false){
+mainForm.btnRun.disabledText = "执行中...";
+
+thread.invoke(function(mainForm, iniPath, log, isSilent){
+import fsys;
+import fsys.ini;
+import inet.http;
+import inet.httpFile;
+import inet.url;
+import string.xml;
+import thread.table;
+import sevenZip.decoder2;
+
+// 5.1读取配置文件到变量
+var ini = fsys.ini(iniPath);
+var proxy = ini.read("Network", "proxy", "");
+if(proxy == "") proxy = null
+var pingSwitch = tonumber(ini.read("Network", "ping_switch", "1"));
+var pingTimeout = tonumber(ini.read("Network", "ping_timeout", "1500"));
+var arch = string.lower(ini.read("cxml", "arch", "x64") : "x64");
+var channel = string.lower(ini.read("cxml", "channel", "stable") : "stable");
+var upr_v = string.lower(ini.read("cxml", "upr_v", "1.3.36.151") : "1.3.36.151");
+var win_v = string.lower(ini.read("cxml", "win_v", "10.0.22621.1028") : "10.0.22621.1028");
+var loc_v = string.lower(ini.read("cxml", "loc_v", "de") : "de");
+var uUA = string.lower(ini.read("cxml", "uUA", "Google Update/1.3.36.152;winhttp") : "Google Update/1.3.36.152;winhttp");
+var runMode = string.lower(ini.read("Task", "runMode", "0") : "0");
+var dir = string.lower(ini.read("Task", "dir", "/Download_installer/") : "/Download_installer/");
+var extdir = string.lower(ini.read("Task", "extdir", "/Chrome_App/") : "/Chrome_App/");
+var tempdir = string.lower(ini.read("Task", "tempdir", "/extract_temp/") : "/extract_temp/");
+var gcp = string.lower(ini.read("Task", "gcp", "https://github.com/Bush2021/chrome_plus") : "https://github.com/Bush2021/chrome_plus");
+
+log(mainForm, string.format("当前工作: 架构：%s | 版本通道: %s | 模式: %s", arch, channel, runMode));
+log(mainForm, string.format("当前参数: 代理: %s | 线路测速: %s", (proxy : "直连"), (pingSwitch == 1 ? pingTimeout + "ms" : "关闭")));
+
+var appIds = {
+["stable"] = "{8A69D345-D564-463C-AFF1-A69D9E530F96}";
+["beta"] = "{8237E44A-0054-442C-B6B6-EA0509993955}";
+["dev"] = "{401C381F-E0DE-4B85-8BD8-3F3F14FBDA57}";
+["canary"] = "{4EA16AC7-FD5A-47C3-875B-DBF4A2008C20}"
+}
+
+var apMap = {
+["beta_x64"] = "x64-beta-statsdef_1";
+["beta_arm64"] = "1.1-beta-arch_arm64-statsdef_1";
+["beta_x86"] = "x86-beta-statsdef_1";
+["canary_x64"] = "x64-canary-statsdef_1";
+["canary_arm64"] = "arm64-canary-statsdef_1";
+["canary_x86"] = "-statsdef_1";
+["dev_x64"] = "x64-dev-statsdef_1";
+["dev_arm64"] = "2.0-dev-arch_arm64-statsdef_1";
+["dev_x86"] = "x86-dev-statsdef_1";
+["stable_x64"] = "x64-stable-statsdef_1";
+["stable_arm64"] = "arm64-stable-statsdef_1";
+["stable_x86"] = "x86-stable-statsdef_1"
+}
+
+var comboap = channel + "_" + arch;
+var currentAppId = appIds[channel] : appIds["stable"];
+var apkey = apMap[comboap] : "x64-stable-statsdef_1";
+
+// 5.2请求版本信息从变量读取自定义值构造XML
+var Cxml = '
+<?xml version="1.0" encoding="UTF-8"?>
+<request protocol="3.0" updater="Omaha" updaterversion="' + upr_v + '" shell_version="' + upr_v + '" ismachine="0" sessionid="{11111111-1111-1111-1111-111111111111}" installsource="taggedmi" requestid="{11111111-1111-1111-1111-111111111111}" dedup="cr" domainjoined="0">
+	<os platform="win" version="' + win_v + '" sp="" arch="' + arch + '"/>
+	<app appid="' + currentAppId + '" version="" nextversion="" ap="' + apkey + '" lang="' + loc_v + '" brand="" client="" installage="-1" installdate="-1" iid="{11111111-1111-1111-1111-111111111111}">
+	<updatecheck/>
+	<data name="install" index="empty"/>
+	</app></request>
+'
+;
+
+var http = inet.http( , proxy ); 
+http.userAgent = uUA;
+http.setTimeouts(3000, 3000, 3000);
+log(mainForm, "正在访问 Google 更新服务器...");
+var response = http.post("https://tools.google.com/service/update2", Cxml);
+if(!response) { log(mainForm, "查询请求失败", "err"); if(isSilent) win.quitMessage(); return; }
+
+var xmlDoc = string.xml(response);
+var pkgNode = xmlDoc.queryEle(tagName="package");
+if(!pkgNode) { log(mainForm, "未发现包信息", "err"); if(isSilent) win.quitMessage(); return; }
+
+var verName = (xmlDoc.queryEle(tagName="manifest") : {version="未知"}).version;
+var fileName = pkgNode.name;
+var fileSize = tonumber(pkgNode.size : 0);
+var fileHash = pkgNode.hash_sha256 : "未知";
+
+log(mainForm, "");
+log(mainForm, "解析到地址: ");
+var urlNodes = xmlDoc.queryEles(tagName="url");
+var pathPart = "";
+for(i=1; #urlNodes; 1){
+var cb = urlNodes[i].codebase;
+log(mainForm, "[" + i + "] " + cb + fileName);
+if(pathPart == "" && string.startsWith(cb, "https://")) pathPart = string.match(cb, "(release2/.+)") : string.match(cb, "(chrome/.+)") : "";
+}
+log(mainForm, " ");
+log(mainForm, "文件名称: " + fileName);
+log(mainForm, "文件大小: " + (fileSize > 0 ? math.size64(fileSize).format() : "未知"));
+log(mainForm, "查询版本: " + verName);
+log(mainForm, "文件校验: " + fileHash);
+log(mainForm, " ");
+
+import thread.table;
+
+var domainList = { 
+    "https://www.google.com/dl/"; 
+    "https://edgedl.me.gvt1.com/edgedl/"; 
+    "https://redirector.gvt1.com/edgedl/"; 
+    "https://dl.google.com/"; 
+    "https://dl-ssl.google.com/" 
+}
+
+var bestDomain = domainList[1];
+
+if(pingSwitch == 1){
+    log(mainForm, "即将对下载地址进行测速优选 (超时: " + pingTimeout + "ms)...");
+
+    // 修正：创建匿名共享表
+    var results = thread.table(); 
+
+    for(i=1; #domainList; 1){
+        // 移除未使用的 mainForm 参数
+        thread.invoke(function(d, path, fn, proxy, timeout, results){
+            import inet.http;
+
+            var h = inet.http(, proxy); 
+            // 建议将连接超时设短一点,方便快速切到下一个
+            h.setTimeouts(timeout, timeout, timeout);
+
+            var s = time.tick();
+            // 使用 Range 请求探测,206 表示服务器支持断点续传且响应成功
+            var ok = h.get(d + path + fn, "Range: bytes=0-0");
+            var cost = time.tick() - s;
+
+            // 记录结果：如果状态码是 200 或 206 都视为有效
+            results[d] = (ok || h.statusCode == 206 || h.statusCode == 200) ? cost : 9999;
+
+            h.close();
+        }, domainList[i], pathPart, fileName, proxy, pingTimeout, results);
+    }
+
+    var startWait = time.tick();
+    // 等待所有线程返回或总超时
+    while( (time.tick() - startWait) < (pingTimeout + 800) ){
+        var count = 0;
+        for(d in results){ count++ } // 统计已写入结果的数量
+
+        if(count >= #domainList) break;
+        thread.delay(100);
+    }
+
+    var minT = 9999;
+    for(i=1; #domainList; 1){
+        var d = domainList[i]; 
+        var t = results[d] : 9999; // 如果线程还没跑完,默认 9999
+
+        log(mainForm, string.format("[%d] %s -> %s", i, d, (t >= 9999 ? "超时/失败" : t + "ms")));
+
+        if(t < minT){ 
+            minT = t; 
+            bestDomain = d; 
+        }
+    }
+
+    // 如果全部失败,minT 依然是 9999,此时 bestDomain 保持为 domainList[1]
+    if(minT >= 9999) log(mainForm, "所有线路测速失败,将尝试使用默认线路", "err");
+
+}
+
+var finalUrl = bestDomain + pathPart + fileName;
+
+log(mainForm, "");
+log(mainForm, "[优选链接] " + finalUrl, "ok");
+log(mainForm, "");
+
+if(runMode == "0"){
+var savePath = "/" + comboap + ".txt";
+string.save(savePath, finalUrl);
+log(mainForm, "[保存到] " + io.fullpath(savePath), "ok");
+} 
+
+else if(runMode == "1"){
+
+    var downloadDir = io.fullpath(ini.read("Task", "dir"));
+    fsys.createDir(downloadDir);
+
+    // 模式1逻辑：保存链接并下载
+    var linkSavePath = io.joinpath(downloadDir, comboap + "_" + (verName : "unknown") + ".txt");
+    string.save(linkSavePath, finalUrl);
+    log(mainForm, "[链接保存到] " + linkSavePath, "ok");
+
+    // 关键修正：参考控制台版本,设置当前工作线程的全局代理
+    if( proxy ){
+        import inet; 
+        inet.setProxy(proxy); // 设置该线程内的全局代理
+    }
+
+    log(mainForm, "正在校验本地文件与服务器状态...");
+
+    // 创建下载对象,不再在构造函数传入 proxy 参数,让其自动沿用线程全局设置
+    // 显式传入 uUA 以确保 Google 更新服务器校验通过
+    var remoteFile = inet.httpFile(finalUrl, downloadDir, , uUA); 
+
+    // 1. 执行检测逻辑
+    var ok, err, errCode = remoteFile.test();
+
+    if( ok ){
+        remoteFile.close();
+        log(mainForm, "校验结果：本地文件已完整,无需重复下载", "ok");
+    }
+    else if( ok === null ){
+        var status = remoteFile.statusCode : "NONE";
+        remoteFile.close(); 
+        log(mainForm, "HTTP请求错误,代码: " + status + " 错误: " + (err : ""), "err");
+    }
+    else {
+        var lastLogTime = 0;
+        var currentDownloaded = 0;
+        var finalTotalSize = 0; 
+
+        // 2. 进度回调逻辑
+        remoteFile.onReceiveBegin = function(statusCode, contentLength, fileSize){
+            currentDownloaded = fileSize : 0;
+            finalTotalSize = (contentLength : 0) + (fileSize : 0);
+
+            if( statusCode == 206 ){
+                log(mainForm, "检测到本地残留文件,正在断点续传...", "info");
+            } else {
+                log(mainForm, "开始全新的下载任务...", "info");
+            }
+        }
+
+        remoteFile.onReceive = function(str, downSize, contentLength){
+            currentDownloaded += downSize;
+
+            var now = time.tick();
+            if( now - lastLogTime > 1000 ){
+                mainForm.editLog.print("[" + time.format("%H:%M:%S") + "] [下载中] " 
+                + math.size64(currentDownloaded).format() + " / " + math.size64(finalTotalSize).format());
+
+                lastLogTime = now;
+            }
+        }
+
+        // 3. 执行实际下载
+        log(mainForm, "正在连接并下载: " + fileName + " ...");
+        var dlOk, dlErr, dlSize = remoteFile.download();
+        remoteFile.close();
+
+        if(dlOk) {
+            log(mainForm, "下载完成: " + fileName, "ok");
+        } else {
+            log(mainForm, "下载失败: " + (dlErr : "未知错误"), "err");
+        }
+    }
+}
+
+else if(runMode == "2"){
+
+var downloadDir = io.fullpath(ini.read("Task", "dir"));
+fsys.createDir(downloadDir);
+
+// 模式1逻辑：保存链接并下载
+var linkSavePath = io.joinpath(downloadDir, comboap + "_" + (verName : "unknown") + ".txt");
+string.save(linkSavePath, finalUrl);
+log(mainForm, "[链接保存到] " + linkSavePath, "ok");
+
+// 关键修正：参考控制台版本,设置当前工作线程的全局代理
+if( proxy ){
+	import inet; 
+	inet.setProxy(proxy); // 设置该线程内的全局代理
+}
+
+// 创建下载对象,不再在构造函数传入 proxy 参数,让其自动沿用线程全局设置
+// 显式传入 uUA 以确保 Google 更新服务器校验通过
+var remoteFile = inet.httpFile(finalUrl, downloadDir, , uUA); 
+
+// 1. 执行检测逻辑
+var ok, err, errCode = remoteFile.test();
+
+if( ok === null ){
+    // 【中断点】HTTP连接彻底失败
+    var status = remoteFile.statusCode : "NONE";
+    remoteFile.close(); 
+    log(mainForm, "HTTP请求错误，代码: " + status + " 错误: " + (err : ""), "err");
+    mainForm.btnRun.disabledText = null; // 恢复按钮
+    return; // 线性中断
+}
+
+if( ok ){
+    // 校验成功，关闭句柄直接进入下一步
+    remoteFile.close();
+    log(mainForm, "校验结果：本地文件已完整，无需重复下载", "ok");
+}
+else {
+    // 必须下载的情况
+    var lastLogTime = 0;
+    var currentDownloaded = 0;
+    var finalTotalSize = 0; 
+
+    // 2. 进度回调逻辑
+    remoteFile.onReceiveBegin = function(statusCode, contentLength, fileSize){
+        currentDownloaded = fileSize : 0;
+        finalTotalSize = (contentLength : 0) + (fileSize : 0);
+        if( statusCode == 206 ){
+            log(mainForm, "检测到本地残留文件，正在断点续传...", "info");
+        } else {
+            log(mainForm, "开始全新的下载任务...", "info");
+        }
+    }
+
+    remoteFile.onReceive = function(str, downSize, contentLength){
+        currentDownloaded += downSize;
+        var now = time.tick();
+        if( now - lastLogTime > 1000 ){
+            mainForm.editLog.print("[" + time().format("%H:%M:%S") + "] [下载中] " 
+                + math.size64(currentDownloaded).format() + " / " + math.size64(finalTotalSize).format());
+            lastLogTime = now;
+        }
+    }
+
+    // 3. 执行实际下载
+    log(mainForm, "正在连接并下载: " + fileName + " ...");
+    var dlOk, dlErr = remoteFile.download();
+    remoteFile.close();
+
+    if(!dlOk) {
+        // 【中断点】下载过程出错
+        log(mainForm, "下载失败: " + (dlErr : "未知错误"), "err");
+        mainForm.btnRun.disabledText = null; // 恢复按钮
+        return; // 线性中断
+    }
+    log(mainForm, "下载完成: " + fileName, "ok");
+}
+
+// 步骤 2：获取 GitHub 插件下载链接 (接在 Chrome 下载完之后)
+var gcp = ini.read("Task", "gcp"); 
+if(!#gcp){
+    log(mainForm, "配置文件中缺少 Task.gcp 地址", "err");
+    mainForm.btnRun.disabledText = null; // 线性中断前恢复按钮
+    return; 
+}
+
+// 关键修正：参考控制台版本,设置当前工作线程的全局代理
+if( proxy ){
+	import inet; 
+	inet.setProxy(proxy); // 设置该线程内的全局代理
+}
+
+// 1. 构造 API 地址并获取数据
+var apiUrl = string.replace(gcp, "github.com/", "api.github.com/repos/") + "/releases/latest";
+log(mainForm, "获取插件信息: " + apiUrl);
+
+var rawText = http.get(apiUrl);
+http.close(); // 获取完立即释放
+
+if(!rawText) {
+    log(mainForm, "API 请求无响应，请检查网络或代理", "err");
+    mainForm.btnRun.disabledText = null; 
+    return; 
+}
+
+// 2. 匹配下载链接
+var startPos = string.indexOf(rawText, '"browser_download_url"');
+var urlStart = startPos ? string.indexOf(rawText, "https://", startPos) : null;
+var urlEnd = urlStart ? string.indexOf(rawText, ".7z", urlStart) : null;
+
+if(!urlEnd){
+    log(mainForm, "未定位到插件下载链接 (.7z)", "err");
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+// 3. 提取下载地址并解码文件名 (处理 ++ 等符号)
+var downloadUrl = string.slice(rawText, urlStart, urlEnd + 3);
+var gcpName = inet.url.decode(string.match(downloadUrl, "/([^/]+)$"), , false);
+
+// --- 3. 校验与下载逻辑 (已经过扁平化修复) ---
+var downloadUrl = string.slice(rawText, urlStart, urlEnd + 3);
+downloadUrl = string.trim(downloadUrl, '"');
+
+// 解析并解码文件名
+var gcpName = inet.url.decode(string.match(downloadUrl, "/([^/]+)$"), , false);
+log(mainForm, "组件名称: " + gcpName, "ok");
+
+var downloadDir = io.fullpath(ini.read("Task", "dir", "/Download_installer/"));
+var archivePathGcp = io.joinpath(downloadDir, gcpName); // 建议使用独立变量名避免冲突
+fsys.createDir(downloadDir);
+
+// 关键修正：参考控制台版本,设置当前工作线程的全局代理
+if( proxy ){
+	import inet; 
+	inet.setProxy(proxy); // 设置该线程内的全局代理
+}
+
+// 创建下载对象,不再在构造函数传入 proxy 参数,让其自动沿用线程全局设置
+var remoteFileGcp = inet.httpFile(downloadUrl, archivePathGcp, , uUA); 
+
+log(mainForm, "正在校验插件包状态...");
+var okG, errG = remoteFileGcp.test();
+
+if( okG === null ){
+    // 【出口 1】连接失败，直接中断
+    log(mainForm, "连接失败: " + (remoteFileGcp.statusCode : "未知"), "err");
+    remoteFileGcp.close();
+    mainForm.btnRun.disabledText = null; 
+    return; 
+}
+
+if( okG ){
+    // 【出口 2】文件已完整
+    remoteFileGcp.close();
+    log(mainForm, "插件包已完整,无需重复下载", "ok");
+}
+else {
+    // 【出口 3】文件不存在或不完整，开始下载
+    var lastLogTime = 0;
+    var currentDownloaded = 0;
+    var finalTotalSize = 0;
+
+    remoteFileGcp.onReceiveBegin = function(statusCode, contentLength, fileSize){
+        currentDownloaded = fileSize : 0;
+        finalTotalSize = (contentLength : 0) + (fileSize : 0);
+        log(mainForm, (statusCode == 206 ? "正在断点续传插件..." : "开始下载插件任务..."));
+    }
+
+    remoteFileGcp.onReceive = function(str, downSize, contentLength){
+        currentDownloaded += downSize;
+        var now = time.tick();
+        if( now - lastLogTime > 1000 ){
+            mainForm.editLog.print("[" + time().format("%H:%M:%S") + "] [下载插件] " 
+                + math.size64(currentDownloaded).format() + " / " + math.size64(finalTotalSize).format());
+            lastLogTime = now;
+        }
+    }
+
+    log(mainForm, "正在下载: " + gcpName);
+    var dlOkG, dlErrG = remoteFileGcp.download();
+    remoteFileGcp.close();
+
+    if(!dlOkG){
+        log(mainForm, "下载失败: " + (dlErrG : "未知错误"), "err");
+        mainForm.btnRun.disabledText = null;
+        return;
+    }
+    log(mainForm, "下载完成: " + gcpName, "ok");
+}
+
+// 只要上面的代码没有 return，程序就会流转到这里。
+log(mainForm, "所有资源已就绪，准备进入解压提取阶段...", "info");
+
+// 步骤 4：解压 Chrome 并注入插件 (线性执行)
+
+// --- 4.1 路径初始化 ---
+var chromeArchivePath = io.fullpath(io.joinpath(downloadDir, fileName)); // 第一部分下载的 Chrome 
+// archivePathGcp 已在上一段定义：io.joinpath(downloadDir, gcpName) 
+var workDir = io.fullpath(ini.read("Task", "tempdir", "/extract_temp/"));
+var targetDir = io.fullpath(ini.read("Task", "extdir", "/App_Chrome/"));
+var arch = ini.read("Cxml", "arch", "x64"); // 获取架构配置 
+
+// 准备环境
+if(io.exist(workDir)) fsys.delete(workDir); 
+fsys.createDir(workDir);
+fsys.createDir(targetDir);
+
+var reader = sevenZip.decoder2();
+
+// --- 4.2 解压 Chrome 主程序 ---
+if( !reader.open(chromeArchivePath) ){
+    log(mainForm, "无法打开 Chrome 安装包: " + chromeArchivePath, "err");
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+log(mainForm, "正在解压 Chrome 到临时目录...", "info");
+var okC = reader.extract(workDir);
+reader.close();
+
+if(!okC){
+    log(mainForm, "Chrome 解压失败", "err");
+    fsys.delete(workDir);
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+// 识别剥离外壳
+var shellPath = workDir;
+var subItems = {};
+fsys.enum( workDir, "*.*",
+    function(dirname,filename,fullpath,findData){ 
+        table.push(subItems, { isDir = !!dirname; path = fullpath; name = filename || dirname });
+    },
+    false 
+);
+
+if( #subItems == 1 && subItems[1].isDir ){
+    shellPath = subItems[1].path;
+    log(mainForm, "检测到单层外壳: " + subItems[1].name + ", 准备剥离。");
+}
+
+log(mainForm, "正在合并 Chrome 内容到目标位置...");
+fsys.enum( shellPath, "*.*",
+    function(dirname,filename,fullpath,findData){ 
+        var itemName = filename || dirname;
+        var finalPath = io.joinpath(targetDir, itemName);
+        fsys.move(fullpath, finalPath);
+    },
+    false 
+);
+
+fsys.delete(workDir); // 清理 Chrome 临时文件
+
+// --- 4.3 解压插件并提取资源 ---
+fsys.createDir(workDir); // 重新建立中转站
+if( !reader.open(archivePathGcp) ){
+    log(mainForm, "无法打开插件包: " + archivePathGcp, "err");
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+log(mainForm, "正在释放插件资源...");
+var okG = reader.extract(workDir);
+reader.close();
+
+if(!okG){
+    log(mainForm, "插件解压失败", "err");
+    fsys.delete(workDir);
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+// 定位架构目录 (x64/x86/arm64)
+var archPath;
+fsys.enum( workDir, arch, 
+    function(dirname,filename,fullpath,findData){ 
+        if(dirname){
+            archPath = fullpath;
+            return false; 
+        }
+    }, 
+    true 
+);
+
+if(!archPath || !io.exist(archPath)){
+    log(mainForm, "插件包内未找到架构目录: " + arch, "err");
+    fsys.delete(workDir);
+    mainForm.btnRun.disabledText = null;
+    return;
+}
+
+// 提取 DLL 文件
+var dllFile;
+fsys.enum( archPath, "*.dll",
+    function(dirname,filename,fullpath,findData){ 
+        if(filename){ dllFile = fullpath; return false; }
+    },
+    true
+);
+
+if(dllFile){
+    var dName = fsys.getFileName(dllFile);
+    fsys.move(dllFile, io.joinpath(targetDir, dName));
+    log(mainForm, "已成功提取 DLL: " + dName, "ok");
+}
+
+// 提取并保护 INI 文件
+var pluginIni;
+fsys.enum( archPath, "*.ini",
+    function(dirname,filename,fullpath,findData){ 
+        if(filename){ pluginIni = fullpath; return false; }
+    },
+    true
+);
+
+if(pluginIni){
+    var iName = fsys.getFileName(pluginIni);
+    var iTarget = io.joinpath(targetDir, iName);
+    if( !io.exist(iTarget) ){
+        fsys.move(pluginIni, iTarget);
+        log(mainForm, "已成功提取配置: " + iName, "ok");
+    } else {
+        log(mainForm, "跳过配置提取：目标目录已存在配置文件", "info");
+    }
+}
+
+// --- 5. 最终清理 ---
+fsys.delete(workDir);
+log(mainForm, "恭喜！Chrome 部署与插件注入已全部完成。", "ok");
+log(mainForm, "部署位置: " + targetDir);
+
+// 任务圆满结束，恢复按钮状态 
+
+}
+mainForm.btnRun.disabledText = null;
+if(isSilent) { 
+log(mainForm, "静默模式运行完成，程序将在1秒后自动退出...");
+thread.delay(1000); 
+win.quitMessage(); 
+}
+}, mainForm, iniPath, log, isSilent);
+}
+
+mainForm.btnRun.oncommand = function(id,event){
+mainForm.runLogic(false);
+}
+
+// --- 6. 启动控制 (置顶判断) ---
+var ini = fsys.ini(iniPath);
+if( ini.read("Settings", "ShowForm", "1") == "1" ){
+mainForm.show();
+log(mainForm, "ChromeLinkerUPv2 - 新代Chrome更新器 窗口化易用版");
+log(mainForm, "离线包地址查询 自动测速下载 自动制作便携版浏览器");
+log(mainForm, "使用说明参考第一代，配置文件中还有更多自定义内容");
+log(mainForm, "");
+} else {
+mainForm.runLogic(true); // 隐藏运行
+}
+
+win.loopMessage();
